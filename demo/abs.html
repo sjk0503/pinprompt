@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>abs - pinprompt demo</title>
+  <style>
+    body { font-family: sans-serif; padding: 24px; }
+  </style>
+</head>
+<body>
+  <h1>React Grab fake (absolute path)</h1>
+  <p><a id="login" href="#">Log in</a></p>
+  <script>
+    window.__REACT_GRAB__ = {
+      getSource: async function (el) {
+        return {
+          filePath: "/abs/project/app/login/page.tsx",
+          lineNumber: 140,
+          columnNumber: 320,
+          componentName: "LoginPage",
+        };
+      },
+    };
+  </script>
+  <script src="../src/pinprompt.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>grab - pinprompt demo</title>
+  <style>
+    body { font-family: sans-serif; padding: 24px; }
+  </style>
+</head>
+<body>
+  <h1>React Grab fake</h1>
+  <p><a id="login" href="#">Log in</a></p>
+  <script>
+    window.__REACT_GRAB__ = {
+      getSource: async function (el) {
+        return {
+          filePath: "app/page.tsx",
+          lineNumber: 21,
+          columnNumber: 11,
+          componentName: "LandingPage",
+        };
+      },
+    };
+  </script>
+  <script src="../src/pinprompt.js"></script>
+</body>
+</html>

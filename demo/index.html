@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pinprompt demo</title>
+  <style>
+    body { font-family: sans-serif; padding: 24px; }
+    main > * { margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>pinprompt demo</h1>
+    <p><button id="buy">Buy</button> count: <span id="count">0</span></p>
+    <ul>
+      <li>One</li>
+      <li>Two</li>
+      <li>Three</li>
+    </ul>
+    <p><a href="about.html">About</a></p>
+    <p><button id="spa">Go SPA</button></p>
+    <section id="view">Home view</section>
+  </main>
+  <script>
+    document.getElementById("buy").addEventListener("click", function () {
+      var el = document.getElementById("count");
+      el.textContent = String(Number(el.textContent) + 1);
+    });
+    document.getElementById("spa").addEventListener("click", function () {
+      history.pushState({}, "", "/demo/spa-route");
+      document.getElementById("view").innerHTML = "<h2>SPA route</h2>";
+    });
+  </script>
+  <script src="../src/pinprompt.js"></script>
+</body>
+</html>

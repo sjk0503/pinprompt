@@ -1,0 +1,40 @@
+{
+  "name": "pinprompt",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "description": "A dev-only browser overlay: pin notes to page elements and copy them as location-tagged lines for your coding agent.",
+  "bin": {
+    "pinprompt": "bin/pinprompt.mjs"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sjk0503/pinprompt.git"
+  },
+  "keywords": [
+    "react",
+    "nextjs",
+    "vite",
+    "devtools",
+    "coding-agent",
+    "claude-code",
+    "ui-feedback"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "playwright test && node --test tests/*.test.mjs",
+    "test:install": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}
