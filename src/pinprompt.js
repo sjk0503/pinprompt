@@ -1,5 +1,5 @@
 /*!
- * pinprompt v0.3.0
+ * pinprompt v0.3.1
  * Dev-only overlay: pick an element, leave a note, copy "location - note" lines for a coding agent.
  * Single file, no dependencies. See SPEC.md.
  */
@@ -14,13 +14,15 @@
 
   // ---------------------------------------------------------------- constants
 
-  var VERSION = "0.3.0";
+  var VERSION = "0.3.1";
   var STORAGE_KEY = "pinprompt:v1";
   var HOST_ID = "pinprompt-host";
   var TEXT_MAX = 30;
   var PIN_SIZE = 20;
   var EDITOR_WIDTH = 280;
   var SOURCE_TIMEOUT_MS = 2000;
+  var GRAB_WAIT_TRIES = 40; // wait up to 10s for React Grab to load
+  var GRAB_WAIT_MS = 250;
   var TOAST_MS = 1500;
   var PATH_POLL_MS = 300;
   var BLOCKED_EVENTS = [
@@ -208,6 +210,26 @@
     } catch (e) {
       return null;
     }
+  }
+
+  /**
+   * React Grab is only our source resolver. Its own toolbar copies an element right away,
+   * which looks like a second, note-less launcher, so hide it. React Grab may load after us.
+   */
+  function hideReactGrabToolbar() {
+    var tries = 0;
+    (function attempt() {
+      var grab = window.__REACT_GRAB__;
+      if (grab && typeof grab.registerPlugin === "function") {
+        try {
+          grab.registerPlugin({ name: "pinprompt", theme: { toolbar: { enabled: false } } });
+        } catch (e) {
+          // Older React Grab without plugin themes: leave its toolbar alone.
+        }
+        return;
+      }
+      if (++tries < GRAB_WAIT_TRIES) setTimeout(attempt, GRAB_WAIT_MS);
+    })();
   }
 
   // ---------------------------------------------------------------- copy format
@@ -845,6 +867,7 @@
   docEl.appendChild(host);
   renderAll();
   loadRoot();
+  hideReactGrabToolbar();
 
   window.__PINPROMPT__ = {
     version: VERSION,

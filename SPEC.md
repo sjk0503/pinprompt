@@ -6,7 +6,7 @@ Pick an element on a page under development and pin a note to it. Each note stay
 
 - A single file, `src/pinprompt.js`. No build step, no dependencies. An IIFE loaded as a plain `<script>`, ES2020.
 - Initializes only once, even if loaded twice. If `window.__PINPROMPT__` already exists, it returns immediately.
-- Global API (for tests and debugging): `window.__PINPROMPT__ = { version: "0.3.0", startPick(), stopPick(), list(), toText(), copyAll(), clear(), relativize() }`.
+- Global API (for tests and debugging): `window.__PINPROMPT__ = { version: "0.3.1", startPick(), stopPick(), list(), toText(), copyAll(), clear(), relativize() }`.
   - `list()` returns a copy of the notes array.
   - `toText()` returns the copy-format string described below.
   - `copyAll()` does the same thing as the Copy button and returns a Promise<boolean>.
@@ -19,6 +19,15 @@ Pick an element on a page under development and pin a note to it. Each note stay
 - When a note is saved, `window.__REACT_GRAB__?.getSource(el)` is awaited. If it does not finish within 2 seconds, it is abandoned.
 - The returned `{ filePath, lineNumber, columnNumber, componentName }` is stored as `source = { filePath, line, column, component }`.
 - If React Grab is missing, fails, or `filePath` is empty, `source = null`. Errors are never thrown to the outside.
+
+## React Grab toolbar
+
+React Grab ships its own floating toolbar (bottom centre) that copies an element immediately, without a note. Next to the pinprompt launcher it reads as a second launcher that "doesn't save notes", so pinprompt hides it.
+
+- On boot, register a React Grab plugin: `window.__REACT_GRAB__.registerPlugin({ name: "pinprompt", theme: { toolbar: { enabled: false } } })`.
+- React Grab may load after pinprompt (Vite, or `afterInteractive` ordering). Retry every 250 ms, up to 40 times (10 s), until `registerPlugin` exists.
+- If `registerPlugin` is missing (older React Grab) or throws, do nothing. Never throw to the outside.
+- Only the toolbar is hidden. `getSource` and React Grab's own hover + Cmd/Ctrl+C copy keep working.
 
 ## Data model
 

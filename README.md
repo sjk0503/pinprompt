@@ -113,6 +113,7 @@ N. <file>:<line>:<column> (<tag> "<text>") — <note>
 - Notes are kept in `localStorage` (`pinprompt:v1`), per browser and per origin.
 - Source locations come from React Grab's `getSource`, which reads React's owner stacks and source maps. It works with Server Components and Turbopack.
 - React Grab returns absolute paths for client components; pinprompt rewrites them relative to the root in `pinprompt.config.json`.
+- pinprompt hides React Grab's own floating toolbar, so the only launcher on screen is pinprompt's (bottom-left). React Grab's hover + <kbd>Cmd</kbd>/<kbd>Ctrl</kbd>+<kbd>C</kbd> copy still works if you want a single element right away.
 - The full behavior spec is in [SPEC.md](SPEC.md).
 
 ## Limitations

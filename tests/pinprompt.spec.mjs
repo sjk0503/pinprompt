@@ -74,7 +74,7 @@ test("global API shape", async ({ page }) => {
       text: api.toText(),
     };
   });
-  expect(shape.version).toBe("0.3.0");
+  expect(shape.version).toBe("0.3.1");
   expect(shape.fns).toEqual(Array(7).fill("function"));
   expect(shape.list).toEqual([]);
   expect(shape.text).toBe("");
@@ -502,4 +502,39 @@ test("list panel: clear asks confirm; dismiss keeps, accept empties everything",
   await expect(hook(page, "copy")).toBeDisabled();
   await expect(page.getByText("No notes yet")).toBeVisible();
   expect(await stored(page)).toEqual([]);
+});
+
+// ---------- React Grab toolbar ----------
+
+const fakeGrab = () => {
+  window.__ppPlugins = [];
+  return { getSource: async () => null, registerPlugin: (p) => window.__ppPlugins.push(p) };
+};
+
+test("hides React Grab's own toolbar through a plugin", async ({ page }) => {
+  await page.addInitScript(`window.__REACT_GRAB__ = (${fakeGrab.toString()})();`);
+  await page.goto("index.html");
+  await expect
+    .poll(() => page.evaluate(() => window.__ppPlugins))
+    .toEqual([{ name: "pinprompt", theme: { toolbar: { enabled: false } } }]);
+});
+
+test("hides the toolbar when React Grab loads after pinprompt", async ({ page }) => {
+  await page.addInitScript(
+    `window.__ppPlugins = []; setTimeout(() => { window.__REACT_GRAB__ = (${fakeGrab.toString()})(); }, 800);`,
+  );
+  await page.goto("index.html");
+  await expect.poll(() => page.evaluate(() => window.__ppPlugins.length), { timeout: 5000 }).toBe(1);
+});
+
+test("an older React Grab without registerPlugin causes no error", async ({ page }) => {
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.addInitScript(() => {
+    window.__REACT_GRAB__ = { getSource: async () => null };
+  });
+  await page.goto("index.html");
+  await page.waitForTimeout(600);
+  expect(errors).toEqual([]);
+  await expect(hook(page, "add")).toBeVisible();
 });
