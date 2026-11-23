@@ -62,13 +62,14 @@ npm run dev
 
 `pinprompt install` does the following, and prints every file it changed:
 
-- Adds [React Grab](https://github.com/aidenybai/react-grab) if it's missing. It resolves each element to its source file and line.
+- Adds [React Grab](https://github.com/aidenybai/react-grab) if it's missing, with a pinned installer (`npx -y grab@0.2.0 init`), not `@latest`. It resolves each element to its source file and line.
+- In Next.js layouts, rewrites React Grab's unversioned `//unpkg.com/react-grab/dist/index.global.js` tag to `https://unpkg.com/react-grab@<your version>/...`. The protocol-relative URL loaded over plain HTTP on `http://localhost` and always took the newest release.
 - Creates `public/__dev/pinprompt.js`, a symlink to this repo's `src/pinprompt.js`, so pulling a new version of pinprompt updates every app at once. Use `--copy` if symlinks are a problem.
 - Writes `public/__dev/pinprompt.config.json` with the project root, used to print project-relative paths.
-- Adds `public/__dev/` to `.gitignore`.
+- Adds `public/__dev/` to `.gitignore`, and to `.dockerignore` / `.vercelignore` if your project has them (Docker and `vercel deploy` ignore `.gitignore`).
 - Inserts a dev-only loader into your root layout (Next.js) or entry file (Vite), between `pinprompt:start` and `pinprompt:end` comments. Running it again is safe.
 
-Nothing ships to production: the loader only runs in development and the files are git-ignored.
+The loader only runs in development, and the files are kept out of git (and out of Docker/Vercel uploads when those ignore files exist), so git-based deploys never include them. One caveat: Vite copies everything in `public/` into `dist/` on `vite build`, so a build made on your machine contains `__dev/pinprompt.js` and `__dev/pinprompt.config.json` (your absolute project path). Neither runs in production, but if you upload a local `dist/`, run `pinprompt uninstall` first or delete `dist/__dev/`.
 
 <details>
 <summary>Example output</summary>

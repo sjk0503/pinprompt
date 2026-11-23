@@ -12,6 +12,23 @@ const END = "pinprompt:end";
 const LOADER_PATH = "/__dev/pinprompt.js";
 const GITIGNORE_COMMENT = "# pinprompt: dev-only UI notes overlay. Never deployed.";
 const GITIGNORE_ENTRY = "public/__dev/";
+// .gitignore does not apply to Docker build contexts or `vercel deploy`, so a
+// local `docker build .` used to bake public/__dev/ (including the config with
+// this machine's absolute project path) into the image. Patch these files too,
+// but only when the project already has them.
+const EXTRA_IGNORE_FILES = [
+  { name: ".dockerignore", entry: "public/__dev" },
+  { name: ".vercelignore", entry: "public/__dev/" },
+];
+
+// React Grab's installer, pinned. `npx -y grab@latest` ran whatever was
+// published last, unreviewed, with auto-confirm. Bump this deliberately.
+const GRAB_VERSION = "0.2.0";
+const GRAB_PKG = `grab@${GRAB_VERSION}`;
+// `grab init` writes this protocol-relative, unversioned CDN URL into Next.js
+// layouts: on http://localhost it loads over plain HTTP (and CORS then blocks
+// the redirect), always taking the newest release.
+const GRAB_CDN_RE = /(["'])(?:https?:)?\/\/unpkg\.com\/react-grab\/dist\/index\.global\.js\1/g;
 
 const USAGE = `pinprompt - install a dev-only UI notes overlay into a web project.
 
@@ -245,12 +262,53 @@ function planLoader(project) {
 
 // ---------- install ----------
 
+// On Windows npx is a .cmd and needs a shell, which joins arguments unquoted:
+// a project path with spaces (or & | < >) broke the command or ran extra ones.
+const winQuote = (a) => (/^[\w\-.:\\/@=]+$/.test(a) ? a : `"${a}"`);
+
 function runGrab(root) {
-  const res = spawnSync("npx", ["-y", "grab@latest", "init", "-y", "--cwd", root], {
+  const args = ["-y", GRAB_PKG, "init", "-y", "--cwd", root];
+  const win = process.platform === "win32";
+  const res = spawnSync(win ? "npx.cmd" : "npx", win ? args.map(winQuote) : args, {
     stdio: "inherit",
-    shell: process.platform === "win32",
+    shell: win,
   });
   return !res.error && res.status === 0;
+}
+
+/** The react-grab version the app uses: installed package, then package.json, then our pin. */
+function reactGrabVersion(root) {
+  const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+  try {
+    const v = JSON.parse(fs.readFileSync(path.join(root, "node_modules", "react-grab", "package.json"), "utf8")).version;
+    if (SEMVER.test(v)) return v;
+  } catch {
+    // not installed yet
+  }
+  try {
+    const pkg = readPkg(root);
+    const range = String({ ...pkg.dependencies, ...pkg.devDependencies }["react-grab"] ?? "");
+    const m = range.trim().match(/^[\^~=v]*(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/);
+    if (m) return m[1];
+  } catch {
+    // fall through
+  }
+  return GRAB_VERSION;
+}
+
+/** Rewrite React Grab's unversioned CDN tag to https + the app's version. Returns changed files. */
+function pinGrabCdn(root) {
+  const changed = [];
+  let version = null;
+  for (const file of nextLayouts(root)) {
+    const s = fs.readFileSync(file, "utf8");
+    if (!new RegExp(GRAB_CDN_RE.source).test(s)) continue;
+    version ??= reactGrabVersion(root);
+    const out = s.replace(GRAB_CDN_RE, (_m, q) => `${q}https://unpkg.com/react-grab@${version}/dist/index.global.js${q}`);
+    fs.writeFileSync(file, out);
+    changed.push(rel(root, file));
+  }
+  return { changed, version };
 }
 
 function placeScript(dest, copy, srcPath) {
@@ -287,16 +345,19 @@ const isDevEntry = (line) => {
   return t === GITIGNORE_ENTRY || t === GITIGNORE_ENTRY.slice(0, -1);
 };
 
-function addGitignore(root) {
-  const file = path.join(root, ".gitignore");
+/** Append the comment + entry unless an equivalent entry is there. Returns true if the file changed. */
+function addIgnoreEntry(file, entry, { create }) {
   const exists = isFile(file);
+  if (!exists && !create) return false;
   const s = exists ? fs.readFileSync(file, "utf8") : "";
   if (s.split(/\r?\n/).some(isDevEntry)) return false;
   const eol = detectEol(s);
   const lead = s === "" || s.endsWith("\n") ? "" : eol;
-  fs.writeFileSync(file, s + lead + GITIGNORE_COMMENT + eol + GITIGNORE_ENTRY + eol);
+  fs.writeFileSync(file, s + lead + GITIGNORE_COMMENT + eol + entry + eol);
   return true;
 }
+
+const addGitignore = (root) => addIgnoreEntry(path.join(root, ".gitignore"), GITIGNORE_ENTRY, { create: true });
 
 function install(opts) {
   const root = findRoot(opts.dir);
@@ -319,14 +380,21 @@ function install(opts) {
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   if (opts.noGrab) {
     console.log("React Grab: skipped (--no-grab)");
-  } else if (deps["react-grab"]) {
-    console.log("React Grab: already installed.");
   } else {
-    console.log("React Grab: installing (npx -y grab@latest init -y)");
-    if (runGrab(root)) {
-      console.log("React Grab: installed (see the output above for changed files).");
+    if (deps["react-grab"]) {
+      console.log("React Grab: already installed.");
     } else {
-      console.warn("Warning: React Grab install failed. Notes will use selectors instead of source locations. Continuing.");
+      console.log(`React Grab: installing (npx -y ${GRAB_PKG} init -y)`);
+      if (runGrab(root)) {
+        console.log("React Grab: installed (see the output above for changed files).");
+      } else {
+        console.warn("Warning: React Grab install failed. Notes will use selectors instead of source locations. Continuing.");
+      }
+    }
+    const pinned = pinGrabCdn(root);
+    if (pinned.changed.length) {
+      console.log(`React Grab: CDN script pinned to https://unpkg.com/react-grab@${pinned.version} (was unversioned, protocol-relative).`);
+      for (const f of pinned.changed) changed.push(`${f} (React Grab script pinned to ${pinned.version})`);
     }
   }
 
@@ -349,8 +417,11 @@ function install(opts) {
     changed.push("public/__dev/pinprompt.config.json");
   }
 
-  // 4) .gitignore
+  // 4) .gitignore (+ .dockerignore / .vercelignore when the project has them)
   if (addGitignore(root)) changed.push(".gitignore");
+  for (const { name, entry } of EXTRA_IGNORE_FILES) {
+    if (addIgnoreEntry(path.join(root, name), entry, { create: false })) changed.push(name);
+  }
 
   // 5) Insert the loader. React Grab may have edited the same file, so recompute.
   const plan = planLoader(project);
@@ -381,8 +452,7 @@ function removeLoader(s) {
   return s.replace(BLOCK_RE, "").replace(MARKED_IMPORT_RE, "");
 }
 
-function removeGitignore(root) {
-  const file = path.join(root, ".gitignore");
+function removeIgnoreEntry(file) {
   if (!isFile(file)) return false;
   const s = fs.readFileSync(file, "utf8");
   const lines = s.split(/(?<=\n)/); // keep each line ending attached to its line.
@@ -396,6 +466,8 @@ function removeGitignore(root) {
   }
   return false;
 }
+
+const removeGitignore = (root) => removeIgnoreEntry(path.join(root, ".gitignore"));
 
 function uninstall(opts) {
   const root = findRoot(opts.dir);
@@ -429,6 +501,9 @@ function uninstall(opts) {
   }
 
   if (removeGitignore(root)) changed.push(".gitignore");
+  for (const { name } of EXTRA_IGNORE_FILES) {
+    if (removeIgnoreEntry(path.join(root, name))) changed.push(name);
+  }
 
   console.log(`pinprompt uninstall: ${root}`);
   if (changed.length) {

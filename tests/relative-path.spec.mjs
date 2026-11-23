@@ -191,3 +191,36 @@ test("note saved before the config arrives copies as relative afterwards", async
   // The already-open list panel re-renders too.
   await expect(hook(page, "item").locator(".loc")).toHaveText(REL);
 });
+
+test("relativize handles Windows roots and paths (backslashes, drive-letter case, file:///C:)", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__PINPROMPT_CONFIG__ = { root: "C:\\Users\\me\\app\\" };
+  });
+  await page.goto("abs.html");
+  const out = await page.evaluate(() => {
+    const r = window.__PINPROMPT__.relativize;
+    return [
+      r("C:\\Users\\me\\app\\components\\Nav.tsx"),
+      r("c:/users/me/app/app/page.tsx"),
+      r("file:///C:/Users/me/app/app/b.tsx"),
+      r("C:\\Users\\me\\app-two\\x.tsx"),
+      r("D:\\other\\y.tsx"),
+    ];
+  });
+  expect(out).toEqual([
+    "components/Nav.tsx",
+    "app/page.tsx",
+    "app/b.tsx",
+    "C:\\Users\\me\\app-two\\x.tsx",
+    "D:\\other\\y.tsx",
+  ]);
+});
+
+test("POSIX roots stay case-sensitive", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__PINPROMPT_CONFIG__ = { root: "/abs/project" };
+  });
+  await page.goto("abs.html");
+  const out = await page.evaluate(() => window.__PINPROMPT__.relativize("/ABS/project/app/a.tsx"));
+  expect(out).toBe("/ABS/project/app/a.tsx");
+});

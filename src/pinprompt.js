@@ -1,5 +1,5 @@
 /*!
- * pinprompt v0.3.1
+ * pinprompt v0.3.2
  * Dev-only overlay: pick an element, leave a note, copy "location - note" lines for a coding agent.
  * Single file, no dependencies. See SPEC.md.
  */
@@ -14,7 +14,7 @@
 
   // ---------------------------------------------------------------- constants
 
-  var VERSION = "0.3.1";
+  var VERSION = "0.3.2";
   var STORAGE_KEY = "pinprompt:v1";
   var HOST_ID = "pinprompt-host";
   var TEXT_MAX = 30;
@@ -234,10 +234,22 @@
 
   // ---------------------------------------------------------------- copy format
 
+  function toSlash(p) {
+    return p.replace(/\\/g, "/");
+  }
+
+  /** "C:/x" style root: Windows paths compare case-insensitively. */
+  function isDriveRoot(p) {
+    return /^[A-Za-z]:\//.test(p);
+  }
+
   /** Display-time path cleanup: strip scheme/bundler prefixes, then the project root, then "./". */
   function relativize(path) {
     var p = String(path == null ? "" : path);
-    if (p.indexOf("file://") === 0) p = p.slice(7);
+    if (p.indexOf("file://") === 0) {
+      p = p.slice(7);
+      if (/^\/[A-Za-z]:[\\/]/.test(p)) p = p.slice(1); // file:///C:/x -> C:/x
+    }
     if (p.indexOf("webpack-internal:///") === 0) p = p.slice(20);
     for (var again = true; again; ) {
       again = false;
@@ -248,14 +260,21 @@
         }
       });
     }
-    if (projectRoot && p.indexOf(projectRoot + "/") === 0) p = p.slice(projectRoot.length + 1);
+    if (projectRoot) {
+      // Windows roots and paths may use "\\" and differ in drive-letter case.
+      var slashed = toSlash(p);
+      var head = slashed.slice(0, projectRoot.length + 1);
+      var rootPrefix = projectRoot + "/";
+      var hit = isDriveRoot(projectRoot) ? head.toLowerCase() === rootPrefix.toLowerCase() : head === rootPrefix;
+      if (hit) p = slashed.slice(rootPrefix.length);
+    }
     if (p.indexOf("./") === 0) p = p.slice(2);
     return p;
   }
 
   function setRoot(value) {
     if (typeof value !== "string") return false;
-    var r = value.replace(/\/+$/, "");
+    var r = toSlash(value).replace(/\/+$/, "");
     if (!r) return false;
     projectRoot = r;
     return true;
@@ -288,7 +307,7 @@
       .map(function (it, i) {
         var text = clip(it.text);
         var label = text ? it.tag + ' "' + text + '"' : it.tag;
-        var memo = String(it.memo).replace(/\r?\n/g, " / ");
+        var memo = String(it.memo).replace(/\r\n|\r|\n/g, " / ");
         return i + 1 + ". " + locationOf(it) + " (" + label + ") — " + memo;
       })
       .join("\n");
@@ -673,7 +692,13 @@
       }, "Save")
     );
 
-    var node = h("div", { class: "editor", onkeydown: onEditorKeyDown },
+    var node = h("div", {
+      class: "editor",
+      onkeydown: onEditorKeyDown,
+      // Apps that bind shortcuts on keyup/keypress (e.g. "?" for help) must not see note typing either.
+      onkeyup: stopKey,
+      onkeypress: stopKey,
+    },
       h("div", { class: "meta" }, info.text ? info.tag + ' "' + info.text + '"' : info.tag),
       input,
       h.apply(null, ["div", { class: "row" }].concat(buttons))
@@ -693,6 +718,10 @@
     if (!editor) return;
     editor.node.remove();
     editor = null;
+  }
+
+  function stopKey(e) {
+    e.stopPropagation();
   }
 
   function onEditorKeyDown(e) {

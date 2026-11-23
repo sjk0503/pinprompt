@@ -74,7 +74,7 @@ test("global API shape", async ({ page }) => {
       text: api.toText(),
     };
   });
-  expect(shape.version).toBe("0.3.1");
+  expect(shape.version).toBe("0.3.2");
   expect(shape.fns).toEqual(Array(7).fill("function"));
   expect(shape.list).toEqual([]);
   expect(shape.text).toBe("");
@@ -537,4 +537,32 @@ test("an older React Grab without registerPlugin causes no error", async ({ page
   await page.waitForTimeout(600);
   expect(errors).toEqual([]);
   await expect(hook(page, "add")).toBeVisible();
+});
+
+// ---------- hardening (0.3.2) ----------
+
+test("editor: keyup/keypress while typing a note do not reach the app's shortcuts", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__appKeys = [];
+    for (const type of ["keydown", "keyup", "keypress"]) {
+      document.addEventListener(type, (e) => window.__appKeys.push(type + ":" + e.key));
+    }
+  });
+  await hook(page, "add").click();
+  await page.locator("#buy").click();
+  const input = hook(page, "editor-input");
+  await input.pressSequentially("a?/");
+  await expect(input).toHaveValue("a?/");
+  expect(await page.evaluate(() => window.__appKeys)).toEqual([]);
+});
+
+test("toText: a lone carriage return in a stored note also becomes ' / '", async ({ page }) => {
+  await page.evaluate((key) => {
+    localStorage.setItem(
+      key,
+      JSON.stringify([{ id: "x", path: "/demo/index.html", selector: "#buy", tag: "button", text: "Buy", memo: "one\rtwo\r\nthree" }]),
+    );
+  }, KEY);
+  await page.reload();
+  expect(await toText(page)).toBe('1. /demo/index.html #buy (button "Buy") — one / two / three');
 });

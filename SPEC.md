@@ -6,7 +6,7 @@ Pick an element on a page under development and pin a note to it. Each note stay
 
 - A single file, `src/pinprompt.js`. No build step, no dependencies. An IIFE loaded as a plain `<script>`, ES2020.
 - Initializes only once, even if loaded twice. If `window.__PINPROMPT__` already exists, it returns immediately.
-- Global API (for tests and debugging): `window.__PINPROMPT__ = { version: "0.3.1", startPick(), stopPick(), list(), toText(), copyAll(), clear(), relativize() }`.
+- Global API (for tests and debugging): `window.__PINPROMPT__ = { version: "0.3.2", startPick(), stopPick(), list(), toText(), copyAll(), clear(), relativize() }`.
   - `list()` returns a copy of the notes array.
   - `toText()` returns the copy-format string described below.
   - `copyAll()` does the same thing as the Copy button and returns a Promise<boolean>.
@@ -99,7 +99,7 @@ Everything is drawn inside a Shadow DOM.
   - Enter saves, Shift+Enter inserts a newline, Esc cancels.
   - **Enter during IME composition (`e.isComposing === true` or `e.keyCode === 229`) does not save.** This is essential for CJK input.
 - A note that is empty after trimming whitespace is not saved.
-- keydown events inside the editor call `stopPropagation()` so they do not leak into the app's shortcuts.
+- keydown, keyup and keypress events inside the editor call `stopPropagation()` so they do not leak into the app's shortcuts.
 - Saving a new note creates its pin and closes the editor.
 
 ### 4) Pins
@@ -166,7 +166,7 @@ React Grab returns relative paths for server components (like `app/page.tsx`) an
 - Cleanup rules (in order)
   1. Remove a `file://` prefix
   2. Remove the prefixes `webpack-internal:///`, `(app-pages-browser)/`, `(rsc)/`, `(ssr)/`
-  3. If a root is known and the path starts with `root + "/"`, cut that part off (a trailing `/` on the root is ignored).
+  3. If a root is known and the path starts with `root + "/"`, cut that part off (a trailing `/` on the root is ignored). Backslashes in the root and the path are treated as `/`, and a Windows drive root (`C:/...`) is compared case-insensitively; `file:///C:/...` becomes `C:/...` in step 1. POSIX roots stay case-sensitive.
   4. Remove a leading `./`
 - If the root is unknown, only step 3 is skipped. A path that is already relative is left as is.
 - `relativize(path)` is exposed on the global API (for tests).
@@ -190,7 +190,7 @@ If project-path is omitted, the current folder is used. The nearest folder (that
 
 ### Install steps
 
-1. **Check React Grab**: if `react-grab` is not in dependencies/devDependencies, run `npx -y grab@latest init -y --cwd <root>`. If that fails, only warn and continue (it still works with selector locations without React Grab). Skipped with `--no-grab`.
+1. **Check React Grab**: if `react-grab` is not in dependencies/devDependencies, run `npx -y grab@0.2.0 init -y --cwd <root>` (the version is pinned in `GRAB_VERSION`; `@latest` would run whatever was published last, with auto-confirm). On Windows the arguments are quoted because `npx.cmd` runs through a shell. If that fails, only warn and continue (it still works with selector locations without React Grab). Then, in Next.js layouts, rewrite React Grab's unversioned, protocol-relative CDN tag (`//unpkg.com/react-grab/dist/index.global.js`, also with `http:`/`https:`) to `https://unpkg.com/react-grab@<version>/dist/index.global.js`, where the version is the installed `node_modules/react-grab`, else the version in package.json, else `GRAB_VERSION`. Already versioned URLs are left alone. This whole step is skipped with `--no-grab`.
 2. **Place the script**: create `<root>/public/__dev/pinprompt.js` as a symlink pointing to the absolute path of this package's `src/pinprompt.js`. If a file or link already exists, replace it. With `--copy`, copy instead of linking.
 3. **Config file**: write `{ "root": "<absolute root path>" }` to `<root>/public/__dev/pinprompt.config.json` (with a trailing newline).
 4. **.gitignore**: if there is no `public/__dev/` line (a leading `/` counts as the same), append the following two lines. Create the file if it does not exist.
@@ -198,6 +198,7 @@ If project-path is omitted, the current folder is used. The nearest folder (that
    # pinprompt: dev-only UI notes overlay. Never deployed.
    public/__dev/
    ```
+   If the project already has a `.dockerignore` (entry `public/__dev`) or `.vercelignore` (entry `public/__dev/`), append the same comment and entry there too, because Docker build contexts and `vercel deploy` do not read `.gitignore`. These files are never created.
 5. **Insert the loader**: place it between marker comments. If the markers already exist, skip (running several times inserts it only once). Even without markers, if `/__dev/pinprompt.js` is already present, treat it as installed and skip.
    - Next.js: if the layout has no `import Script from "next/script"`, add it. If the file starts with a `"use client"`/`'use client'` directive, put it on the line after that; otherwise at the very top. Append a `// pinprompt` comment to the end of the import line added this way. Put the block right before `</head>`, or right before `</body>` if there is no `</head>`, with indentation equal to that line's indentation plus 2 spaces. If neither exists, print the code to add by hand and exit with code 1.
      ```tsx
@@ -223,6 +224,6 @@ If project-path is omitted, the current folder is used. The nearest folder (that
 
 - Remove the block between the markers (including the marker lines). Also remove the import line carrying the `// pinprompt` comment. Other Script imports (React Grab, etc.) are left alone.
 - Delete `public/__dev/pinprompt.js` and `pinprompt.config.json`, and delete the `public/__dev/` folder too if it becomes empty.
-- Remove the two lines above (comment + `public/__dev/`) from .gitignore if they appear together.
-- React Grab is left alone.
+- Remove the two lines above (comment + `public/__dev/`) from .gitignore, .dockerignore and .vercelignore if they appear together.
+- React Grab is left alone (a CDN tag pinned at install stays pinned).
 - Print the list of changed files.

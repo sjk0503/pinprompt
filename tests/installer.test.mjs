@@ -349,3 +349,94 @@ test("a subfolder project path resolves to the nearest package.json folder as ro
   const config = JSON.parse(read(root, "public/__dev/pinprompt.config.json"));
   assert.equal(fs.realpathSync(config.root), fs.realpathSync(root));
 });
+
+// ---------- hardening (0.3.2) ----------
+
+const UNPINNED = 'src="//unpkg.com/react-grab/dist/index.global.js"';
+
+function nextPkgWithGrab(root, range = "^0.2.0") {
+  write(
+    root,
+    "package.json",
+    JSON.stringify({ name: "app", dependencies: { next: "15.0.0", react: "19.0.0", "react-grab": range } }, null, 2) + "\n",
+  );
+}
+
+test("React Grab's unversioned protocol-relative CDN tag is pinned to the installed version over https", (t) => {
+  const root = tmpProject(t);
+  nextPkgWithGrab(root);
+  write(root, "node_modules/react-grab/package.json", '{ "name": "react-grab", "version": "0.2.3" }\n');
+  write(root, "app/layout.tsx", LAYOUT_WITH_HEAD);
+
+  const r = run(["install", root]); // react-grab already a dependency: no npx call
+  assert.equal(r.status, 0, r.stderr);
+  const layout = read(root, "app/layout.tsx");
+  assert.ok(!layout.includes(UNPINNED), layout);
+  assert.ok(layout.includes('src="https://unpkg.com/react-grab@0.2.3/dist/index.global.js"'), layout);
+  assert.match(r.stdout, /React Grab script pinned to 0\.2\.3/);
+
+  // Idempotent: a pinned URL is left alone.
+  assert.equal(run(["install", root]).status, 0);
+  assert.equal(read(root, "app/layout.tsx"), layout);
+
+  // Uninstall removes only pinprompt's block; the safer React Grab tag stays.
+  assert.equal(uninstall(root).status, 0);
+  assert.equal(
+    read(root, "app/layout.tsx"),
+    LAYOUT_WITH_HEAD.replace(UNPINNED, 'src="https://unpkg.com/react-grab@0.2.3/dist/index.global.js"'),
+  );
+});
+
+test("without node_modules the version comes from package.json", (t) => {
+  const root = tmpProject(t);
+  nextPkgWithGrab(root, "~0.2.1");
+  write(root, "app/layout.tsx", LAYOUT_WITH_HEAD);
+  assert.equal(run(["install", root]).status, 0);
+  assert.ok(read(root, "app/layout.tsx").includes("https://unpkg.com/react-grab@0.2.1/dist/index.global.js"));
+});
+
+test("--no-grab leaves the React Grab tag untouched", (t) => {
+  const root = tmpProject(t);
+  nextPkgWithGrab(root);
+  write(root, "app/layout.tsx", LAYOUT_WITH_HEAD);
+  assert.equal(install(root).status, 0);
+  assert.ok(read(root, "app/layout.tsx").includes(UNPINNED));
+});
+
+test(".dockerignore and .vercelignore get the entry only when they exist, and lose it on uninstall", (t) => {
+  const root = tmpProject(t);
+  nextPkg(root);
+  write(root, "app/layout.tsx", LAYOUT_BODY_ONLY);
+  write(root, ".dockerignore", "node_modules\n.next");
+  write(root, ".vercelignore", ".env\n");
+
+  assert.equal(install(root).status, 0);
+  assert.equal(
+    read(root, ".dockerignore"),
+    "node_modules\n.next\n# pinprompt: dev-only UI notes overlay. Never deployed.\npublic/__dev\n",
+  );
+  assert.equal(read(root, ".vercelignore"), ".env\n# pinprompt: dev-only UI notes overlay. Never deployed.\npublic/__dev/\n");
+
+  assert.equal(install(root).status, 0);
+  assert.equal(count(read(root, ".dockerignore"), "public/__dev"), 1);
+
+  assert.equal(uninstall(root).status, 0);
+  assert.equal(read(root, ".dockerignore"), "node_modules\n.next\n");
+  assert.equal(read(root, ".vercelignore"), ".env\n");
+});
+
+test("no .dockerignore is created for projects without one, and an existing entry is respected", (t) => {
+  const root = tmpProject(t);
+  nextPkg(root);
+  write(root, "app/layout.tsx", LAYOUT_BODY_ONLY);
+  assert.equal(install(root).status, 0);
+  assert.ok(!exists(root, ".dockerignore"));
+  assert.ok(!exists(root, ".vercelignore"));
+
+  const other = tmpProject(t);
+  nextPkg(other);
+  write(other, "app/layout.tsx", LAYOUT_BODY_ONLY);
+  write(other, ".dockerignore", "/public/__dev/\n");
+  assert.equal(install(other).status, 0);
+  assert.equal(read(other, ".dockerignore"), "/public/__dev/\n");
+});
